@@ -21,7 +21,7 @@ This repository contains the implementation of various models for **long-term ti
 
 ---
 
-## 🧪 Models Implemented
+##  Models Implemented
 
 ### From ["Are Transformers Effective for Time Series Forecasting?"](https://arxiv.org/abs/2205.13504) (AAAI 2023)
 1. **Linear**: A simple linear layer for forecasting.
