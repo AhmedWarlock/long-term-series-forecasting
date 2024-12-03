@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, Linear, NLinear, MyLinear
+from models import DLinear, Linear, NLinear, MyLinear, RepeatLast, PredictZero, PredictMean
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric
 
@@ -62,24 +62,9 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                        else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if 'Linear' in self.args.model:
-                        outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                outputs = self.model(batch_x)
+
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
@@ -134,37 +119,13 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                        else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-
-                        f_dim = -1 if self.args.features == 'MS' else 0
-                        outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                        loss = criterion(outputs, batch_y)
-                        train_loss.append(loss.item())
-                else:
-                    if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
-                    # print(outputs.shape,batch_y.shape)
-                    f_dim = -1 if self.args.features == 'MS' else 0
-                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                    batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                    loss = criterion(outputs, batch_y)
-                    train_loss.append(loss.item())
+                outputs = self.model(batch_x)
+                # print(outputs.shape,batch_y.shape)
+                f_dim = -1 if self.args.features == 'MS' else 0
+                outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                loss = criterion(outputs, batch_y)
+                train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
@@ -233,25 +194,8 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                        else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                outputs = self.model(batch_x)
 
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 # print(outputs.shape,batch_y.shape)
@@ -260,8 +204,15 @@ class Exp_Main(Exp_Basic):
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
 
+
                 pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
                 true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+
+                # if i == 3:
+                #     print("================================================")
+                #     print("last sequence in input: \n", batch_x[:3,-1,:])
+                #     print("\n preds: \n", outputs[:3,:,:])
+                #     print("================================================")
 
                 preds.append(pred)
                 trues.append(true)
@@ -321,24 +272,9 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(batch_y.device)
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
-                if self.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                        else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if 'Linear' in self.args.model:
-                        outputs = self.model(batch_x)
-                    else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                outputs = self.model(batch_x)
+
                 pred = outputs.detach().cpu().numpy()  # .squeeze()
                 preds.append(pred)
 

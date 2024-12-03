@@ -40,14 +40,14 @@ class Model(nn.Module):
             self.lin =  nn.Linear(self.in_channels, self.out_channels)
 
     def forward(self, x):
-            # seq_last = x[:,-1:,:].detach()
-            # x = x - seq_last
+            seq_last = x[:,-1:,:].detach()
+            x = x - seq_last
             if self.individual:
                 output = self.lin(x)         
             else:
                 output = self.lin(x.permute(0,2,1)).permute(0,2,1)
             
-            # output = output + seq_last
+            output = output + seq_last
             return output 
 
 
