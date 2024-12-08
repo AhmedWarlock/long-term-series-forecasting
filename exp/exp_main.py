@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, Linear, NLinear, MyLinear, RepeatLast, PredictZero, PredictMean
+from models import DLinear, Linear, NLinear, MyLinear, RepeatLast, PredictZero, PredictMean, timeStamp
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric
 
@@ -30,7 +30,7 @@ class Exp_Main(Exp_Basic):
             'Linear': Linear,
         }
         # model = model_dict[self.args.model].Model(self.args).float()
-        model = MyLinear.Model(self.args).float()
+        model = timeStamp.Model(self.args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -63,7 +63,8 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                outputs = self.model(batch_x)
+                # outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -119,7 +120,8 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                outputs = self.model(batch_x)
+                # outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark)
                 # print(outputs.shape,batch_y.shape)
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -194,7 +196,8 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                outputs = self.model(batch_x)
+                # outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark)
 
 
                 f_dim = -1 if self.args.features == 'MS' else 0
@@ -273,7 +276,8 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(batch_y.device)
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                outputs = self.model(batch_x)
+                # outputs = self.model(batch_x)
+                outputs = self.model(batch_x, batch_x_mark)
 
                 pred = outputs.detach().cpu().numpy()  # .squeeze()
                 preds.append(pred)

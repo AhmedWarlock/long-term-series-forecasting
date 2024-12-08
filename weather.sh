@@ -7,7 +7,7 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 seq_len=336
-model_name=MYNLin
+model_name=TimeEnc
 
 python -u run_expirement.py \
   --is_training 1 \
