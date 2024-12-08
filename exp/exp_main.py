@@ -248,6 +248,18 @@ class Exp_Main(Exp_Basic):
         f.write('\n')
         f.close()
 
+        f = open("mse_per_feat.text", 'a')
+        f.write(setting + "  \n")
+        per_feat = PerFeatMSE(preds, trues)
+        for i in range(per_feat.shape[1]):
+            f.write(f'{per_feat[1,i]}\n')
+
+        f.write('\n')
+        f.write('\n')
+        f.write('=====================================================')
+        f.write('\n')
+        f.close()
+
         # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
         np.save(folder_path + 'pred.npy', preds)
         # np.save(folder_path + 'true.npy', trues)
