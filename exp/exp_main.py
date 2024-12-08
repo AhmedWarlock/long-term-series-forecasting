@@ -2,7 +2,7 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from models import DLinear, Linear, NLinear, MyLinear, RepeatLast, PredictZero, PredictMean, timeStamp
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
-from utils.metrics import metric
+from utils.metrics import metric, PerFeatMSE
 
 import numpy as np
 import pandas as pd

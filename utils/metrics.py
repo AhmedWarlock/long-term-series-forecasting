@@ -1,5 +1,14 @@
 import numpy as np
+import pandas as pd
 
+def PerFeatMSE(pred, true):
+    df_raw = pd.read_csv("/Users/ahmedawad/Desktop/Rom/long-term-series-forecasting/dataset/weather.csv")
+    cols = list(df_raw.columns)
+    cols.remove('date')
+    col = np.array(cols)
+    mses = np.mean((pred - true) ** 2, axis=(0,1))
+    output = np.vstack((col, mses))
+    return output
 
 def RSE(pred, true):
     return np.sqrt(np.sum((true - pred) ** 2)) / np.sqrt(np.sum((true - true.mean()) ** 2))
