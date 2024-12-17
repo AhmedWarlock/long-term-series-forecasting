@@ -1,18 +1,15 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, Linear, NLinear, MyLinear, RepeatLast, PredictZero, PredictMean, timeStamp
+from models import DLinear, Linear, My_NLinear, NLinear, RepeatLast,  TimeEmbed, N_TimeEmbed, EmbedLastTime
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric, PerFeatMSE
-
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 from torch import optim
-
 import os
 import time
-
 import warnings
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,9 +25,14 @@ class Exp_Main(Exp_Basic):
             'DLinear': DLinear,
             'NLinear': NLinear,
             'Linear': Linear,
+            'RepeatLast': RepeatLast,
+            'My_NLinear': My_NLinear,
+            'TimeEmbed': TimeEmbed,
+            'N_TimeEmbed': N_TimeEmbed,
+            'EmbedLastTime': EmbedLastTime,
         }
-        # model = model_dict[self.args.model].Model(self.args).float()
-        model = timeStamp.Model(self.args).float()
+        model = model_dict[self.args.model].Model(self.args).float()
+        # model = TimeEmbed.Model(self.args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -62,9 +64,11 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-
-                # outputs = self.model(batch_x)
-                outputs = self.model(batch_x, batch_x_mark)
+                if self.args.use_time : 
+                    outputs = self.model(batch_x, batch_x_mark)
+                else : 
+                    outputs = self.model(batch_x)
+                
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -120,8 +124,10 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                # outputs = self.model(batch_x)
-                outputs = self.model(batch_x, batch_x_mark)
+                if self.args.use_time : 
+                    outputs = self.model(batch_x, batch_x_mark)
+                else : 
+                    outputs = self.model(batch_x)
                 # print(outputs.shape,batch_y.shape)
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -196,8 +202,10 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # outputs = self.model(batch_x)
-                outputs = self.model(batch_x, batch_x_mark)
+                if self.args.use_time : 
+                    outputs = self.model(batch_x, batch_x_mark)
+                else : 
+                    outputs = self.model(batch_x)
 
 
                 f_dim = -1 if self.args.features == 'MS' else 0
@@ -288,8 +296,10 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(batch_y.device)
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                # outputs = self.model(batch_x)
-                outputs = self.model(batch_x, batch_x_mark)
+                if self.args.use_time : 
+                    outputs = self.model(batch_x, batch_x_mark)
+                else : 
+                    outputs = self.model(batch_x)
 
                 pred = outputs.detach().cpu().numpy()  # .squeeze()
                 preds.append(pred)

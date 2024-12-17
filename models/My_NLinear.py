@@ -30,11 +30,11 @@ class Model(nn.Module):
         self.out_channels = args.pred_len
         self.num_feats = args.enc_in
         self.individual = args.individual
-        
+        self.num_layers = args.num_lin_layers
         if self.individual:
             self.lin = nn.Sequential(
                   LinearLayer(self.in_channels, self.out_channels, self.num_feats),
-                  *[LinearLayer(self.out_channels, self.out_channels,self.num_feats) for _ in range(1)]
+                  *[LinearLayer(self.out_channels, self.out_channels,self.num_feats) for _ in range(self.num_layers-1)]
             )
         else : 
             self.lin =  nn.Linear(self.in_channels, self.out_channels)
@@ -49,15 +49,4 @@ class Model(nn.Module):
             
             output = output + seq_last
             return output 
-
-
-
-
-
-
-        
-        
-
-
-
-     
+    
