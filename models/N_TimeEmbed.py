@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import pdb
 
 class LinearLayer(nn.Module):
 
@@ -26,11 +27,12 @@ class LinearLayer(nn.Module):
 class Model(nn.Module):
     def __init__(self, args):
         super(Model, self).__init__()
-        self.in_channels = args.seq_len + 48
+        self.in_channels = args.seq_len + 32
         self.out_channels = args.pred_len
         self.num_feats = args.enc_in
         self.individual = args.individual
-        self.time_embed_layer = nn.Embedding(2,48)
+        self.hour_embed_layer = nn.Embedding(24,16)
+        self.day_embed_layer = nn.Embedding(266,16)
 
         if self.individual:
             self.lin = nn.Sequential(
@@ -44,12 +46,16 @@ class Model(nn.Module):
             _, _, in_feats = x.shape
             seq_last = x[:,-1:,:].detach()
             x = x - seq_last
-            time_last = time_stamp[:,-1,:].detach()
-            temp_enc = self.time_embed_layer(time_last.long())
-            temp_enc =temp_enc.mean(dim=1)
-            temp_enc = temp_enc.unsqueeze(-1).repeat(1,1,in_feats)
-            input = torch.cat((x,temp_enc), dim = 1)
 
+            day_last = time_stamp[:,-1,0].detach()
+            hour_last = time_stamp[:,-1,1].detach()
+
+            day_embd = self.day_embed_layer(day_last.long())
+            hour_embd = self.hour_embed_layer(hour_last.long())
+
+            time_embd = torch.cat((day_embd,hour_embd), dim = 1)
+            time_embd = time_embd.unsqueeze(-1).repeat(1,1,in_feats)
+            input = torch.cat((x,time_embd), dim=1)
             if self.individual:
                 output = self.lin(input)         
             else:

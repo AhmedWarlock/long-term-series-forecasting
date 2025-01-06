@@ -62,6 +62,7 @@ def main():
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
     parser.add_argument('--use_time', type=int, default=0, help='use time features')
+    parser.add_argument('--use_dayofyear', type=int, default=1, help='use day of the year as a time feature')
 
 
     # optimization

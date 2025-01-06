@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import pdb
 
 class LinearLayer(nn.Module):
     def __init__(self,in_channels, out_channels, num_feats):
@@ -30,7 +31,7 @@ class Model(nn.Module):
         self.out_channels = args.pred_len
         self.num_feats = args.enc_in 
         self.individual = args.individual
-        self.time_embed_layer = nn.Embedding(1,48)
+        self.time_embed_layer = nn.Embedding(24,48)
         self.num_layers = args.num_lin_layers
         if self.individual:
             self.lin = nn.Sequential(
@@ -44,8 +45,8 @@ class Model(nn.Module):
 
     def forward(self, x, time_stamp):
             batch_size, _, in_feats = x.shape
-            temp_enc = self.time_embed_layer(time_stamp.long()) # [16, 336, 2, 48]
-            temp_enc =temp_enc.mean(dim=[1,2]) # [16, 48]
+            temp_enc = self.time_embed_layer(time_stamp.long()) # [16, 336, 1, 48]
+            temp_enc = temp_enc[:,-1].squeeze(1) # [16, 48]
             temp_enc = temp_enc.unsqueeze(-1).repeat(1,1,in_feats) # [16, 48, 21]
             input = torch.cat((x,temp_enc), dim = 1) # [16, 336 + 48, 21]
             if self.individual:

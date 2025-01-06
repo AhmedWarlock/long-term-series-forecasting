@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 class Dataset_Custom(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='M', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h', train_only=False):
+                 target='OT', scale=True, timeenc=0, freq='h', train_only=False,use_day=0):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -36,6 +36,7 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.train_only = train_only
+        self.use_day = use_day
 
         self.root_path = root_path
         self.data_path = data_path
@@ -84,7 +85,8 @@ class Dataset_Custom(Dataset):
         # if self.timeenc == 0:
             # df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
         # df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
-        df_stamp['day'] = df_stamp.date.apply(lambda row: row.dayofyear, 1)
+        if self.use_day:
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.dayofyear, 1)
             # df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
         df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
         data_stamp = df_stamp.drop(['date'], axis=1).values

@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, Linear, My_NLinear, NLinear, RepeatLast,  TimeEmbed, N_TimeEmbed, EmbedLastTime
+from models import DLinear, Linear, My_NLinear, NLinear, RepeatLast,  TimeEmbed, N_TimeEmbed, EmbedLastTime,SinuEmbed,Mixer
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric, PerFeatMSE
 import numpy as np
@@ -30,9 +30,11 @@ class Exp_Main(Exp_Basic):
             'TimeEmbed': TimeEmbed,
             'N_TimeEmbed': N_TimeEmbed,
             'EmbedLastTime': EmbedLastTime,
+            'SinuEmbed': SinuEmbed,
+            'Mixer': Mixer,
         }
         model = model_dict[self.args.model].Model(self.args).float()
-        # model = TimeEmbed.Model(self.args).float()
+        # model = Mixer.Model(self.args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
