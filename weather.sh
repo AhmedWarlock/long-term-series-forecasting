@@ -7,11 +7,11 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 seq_len=336
-model_name=N_TimeEmbed
-
+model_name=RBF_Embed
 
 python -u run_expirement.py \
   --is_training 1 \
+  --train_epochs 1 \
   --root_path ./dataset/ \
   --data_path weather.csv \
   --model_id weather_$seq_len'_'96 \
@@ -21,12 +21,13 @@ python -u run_expirement.py \
   --enc_in 21 \
   --num_lin_layers 2 \
   --use_time 1 \
-  --use_dayofyear 1 \
+  --use_dayofyear 0 \
   --des 'Exp' \
   --itr 1 --batch_size 16  >logs/$model_name'_'$seq_len'_'96.log
 
 python -u run_expirement.py \
   --is_training 1 \
+  --train_epochs 1 \
   --root_path ./dataset/ \
   --data_path weather.csv \
   --model_id weather_$seq_len'_'192 \
@@ -36,12 +37,13 @@ python -u run_expirement.py \
   --enc_in 21 \
   --num_lin_layers 2 \
   --use_time 1 \
-  --use_dayofyear 1 \
+  --use_dayofyear 0 \
   --des 'Exp' \
   --itr 1 --batch_size 16  >logs/$model_name'_'$seq_len'_'192.log
 
 python -u run_expirement.py \
   --is_training 1 \
+  --train_epochs 1 \
   --root_path ./dataset/ \
   --data_path weather.csv \
   --model_id weather_$seq_len'_'336 \
@@ -51,12 +53,13 @@ python -u run_expirement.py \
   --enc_in 21 \
   --num_lin_layers 2 \
   --use_time 1 \
-  --use_dayofyear 1 \
+  --use_dayofyear 0 \
   --des 'Exp' \
   --itr 1 --batch_size 16  >logs/$model_name'_'$seq_len'_'336.log
 
 python -u run_expirement.py \
   --is_training 1 \
+  --train_epochs 1 \
   --root_path ./dataset/ \
   --data_path weather.csv \
   --model_id weather_$seq_len'_'720 \
@@ -66,7 +69,6 @@ python -u run_expirement.py \
   --enc_in 21 \
   --num_lin_layers 2 \
   --use_time 1 \
-  --use_dayofyear 1 \
+  --use_dayofyear 0 \
   --des 'Exp' \
   --itr 1 --batch_size 16  >logs/$model_name'_'$seq_len'_'720.log
-

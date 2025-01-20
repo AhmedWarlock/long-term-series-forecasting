@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import numpy as np
+from sklego.preprocessing import RepeatingBasisFunction
 import pdb
 
 class LinearLayer(nn.Module):
@@ -27,12 +27,12 @@ class LinearLayer(nn.Module):
 class Model(nn.Module):
     def __init__(self, args):
         super(Model, self).__init__()
-        self.in_channels = args.seq_len + 32
+        self.in_channels = args.seq_len + 16
         self.out_channels = args.pred_len
         self.num_feats = args.enc_in
         self.individual = args.individual
-        self.hour_embed_layer = nn.Embedding(24,16)
-        self.day_embed_layer = nn.Embedding(266,16)
+        self.rbf = RepeatingBasisFunction(n_periods=16,input_range=(0,23),
+                         	remainder="drop")
 
         if self.individual:
             self.lin = nn.Sequential(
@@ -47,15 +47,15 @@ class Model(nn.Module):
             seq_last = x[:,-1:,:].detach()
             x = x - seq_last
 
-            day_last = time_stamp[:,-1,0].detach()
-            hour_last = time_stamp[:,-1,1].detach() #[16]
-            pdb.set_trace()
-            day_embd = self.day_embed_layer(day_last.long())
-            hour_embd = self.hour_embed_layer(hour_last.long()) # [16,16]
+            hour_last = time_stamp[:,-1].detach() #[16]
+            hour_embd = torch.tensor(self.rbf.fit_transform(hour_last.cpu().numpy())
+                                    ).float().to(x.device)
+            time_embd = hour_embd.unsqueeze(-1).repeat(1,1,in_feats)
 
-            time_embd = torch.cat((day_embd,hour_embd), dim = 1)
-            time_embd = time_embd.unsqueeze(-1).repeat(1,1,in_feats) # [16,16,21]
+
             input = torch.cat((x,time_embd), dim=1)
+
+
             if self.individual:
                 output = self.lin(input)         
             else:
@@ -63,25 +63,3 @@ class Model(nn.Module):
             
             output = output + seq_last
             return output 
-    
-
-
-
-
-
-    # def forward(self, x, time_stamp):
-    #         batch_size, _, in_feats = x.shape
-    #         time_last = time_stamp[:,-1,:].detach()
-    #         temp_enc = self.time_embed_layer(time_last.squeeze(-1).long()) # [16, 1, 48]
-    #         # temp_enc =temp_enc.mean(dim=1)
-    #         temp_enc =temp_enc.squeeze(1)
-    #         temp_enc = temp_enc.unsqueeze(-1).repeat(1,1,in_feats)
-    #         # temp_enc = self.temp_enc_layer(time_stamp)
-    #         input = torch.cat((x,temp_enc), dim = 1)
-    #         # input = x + temp_enc            
-    #         if self.individual:
-    #             output = self.lin(input)         
-    #         else:
-    #             output = self.lin(input.permute(0,2,1)).permute(0,2,1)
-    #             output = self.proj_layer(output)
-    #         return output
