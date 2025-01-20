@@ -7,7 +7,7 @@ if [ ! -d "./logs" ]; then
     mkdir ./logs
 fi
 seq_len=336
-model_name=HourEmbedMix
+model_name=RBF_Embed
 
 python -u run_expirement.py \
   --is_training 1 \
@@ -20,5 +20,6 @@ python -u run_expirement.py \
   --enc_in 21 \
   --num_lin_layers 2 \
   --use_time 1 \
+  --use_dayofyear 0 \
   --des 'Exp' \
   --itr 1 --batch_size 16 
