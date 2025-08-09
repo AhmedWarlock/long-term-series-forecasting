@@ -5,3 +5,5 @@ test_results/
 results/
 logs/
 .DS_Store
+dataset\
+checkpoints\
