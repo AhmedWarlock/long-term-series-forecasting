@@ -1,14 +1,9 @@
 import numpy as np
 import pandas as pd
+from properscoring import crps_ensemble
+import torch
+import ot
 
-def PerFeatMSE(pred, true):
-    df_raw = pd.read_csv("/Users/ahmedawad/Desktop/Rom/long-term-series-forecasting/dataset/weather.csv")
-    cols = list(df_raw.columns)
-    cols.remove('date')
-    col = np.array(cols)
-    mses = np.mean((pred - true) ** 2, axis=(0,1))
-    output = np.vstack((col, mses))
-    return output
 
 def RSE(pred, true):
     return np.sqrt(np.sum((true - pred) ** 2)) / np.sqrt(np.sum((true - true.mean()) ** 2))
@@ -51,3 +46,48 @@ def metric(pred, true):
     corr = CORR(pred, true)
 
     return mae, mse, rmse, mape, mspe, rse, corr
+
+
+
+
+def compute_crps_from_samples(forecast_samples, ground_truth, axis=-1):
+    """
+    ----------
+    forecast_samples : np.ndarray
+        Forecast samples of shape [num_samples, num_observations, horizon].
+    ground_truth : np.ndarray
+        True observations of shape [num_observations, horizon].
+    axis : int, optional
+        Axis corresponding to the samples in the final reshaped array.
+        Default is -1 (samples in the last dimension).
+    """
+    # Move samples to last axis: [num_obs, horizon, num_samples]
+    forecasts = np.transpose(forecast_samples, (1, 2, 0))
+
+    # Check dimensions
+    assert forecasts.shape[:2] == ground_truth.shape, \
+        f"Shape mismatch: forecasts {forecasts.shape[:2]}, ground_truth {ground_truth.shape}"
+
+
+    crps = crps_ensemble(ground_truth, forecasts, axis=axis)
+
+    return np.mean(crps)
+
+
+def get_mse_mae(preds, trues):
+  mean_preds = np.mean(preds, axis=0)
+  mae, mse, _, _, _, _, _ = metric(mean_preds, trues)
+  return mse, mae
+
+
+def emd_loss(x, y, epsilon=7):
+
+    a = torch.tensor(ot.unif(x.shape[0]), dtype=torch.float32).to(x.device)
+    b = torch.tensor(ot.unif(y.shape[0]), dtype=torch.float32).to(y.device)
+
+    M = ot.dist(x, y, metric='euclidean') ** 2
+
+    T = ot.emd(a, b, M)
+    cost = torch.sum(T * M)
+
+    return cost
