@@ -1,8 +1,8 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, Linear, My_NLinear, NLinear, RepeatLast,  TimeEmbed, N_TimeEmbed, EmbedLastTime,SinuEmbed,Mixer,N_Patch,RBF_Embed
+from models import DLinear, NLinear, FlowCast
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
-from utils.metrics import metric, PerFeatMSE
+from utils.metrics import metric, emd_loss
 import numpy as np
 import pandas as pd
 import torch
@@ -11,7 +11,6 @@ from torch import optim
 import os
 import time
 import warnings
-import matplotlib.pyplot as plt
 import numpy as np
 
 warnings.filterwarnings('ignore')
@@ -24,19 +23,10 @@ class Exp_Main(Exp_Basic):
         model_dict = {
             'DLinear': DLinear,
             'NLinear': NLinear,
-            'Linear': Linear,
-            'RepeatLast': RepeatLast,
-            'My_NLinear': My_NLinear,
-            'TimeEmbed': TimeEmbed,
-            'N_TimeEmbed': N_TimeEmbed,
-            'EmbedLastTime': EmbedLastTime,
-            'SinuEmbed': SinuEmbed,
-            'Mixer': Mixer,
-            'Patch':N_Patch,
-            'RBF_Embed' : RBF_Embed
+            'FlowCast': FlowCast,
+            'FlowCast-OT': FlowCast,
         }
         model = model_dict[self.args.model].Model(self.args).float()
-        # model = RBF_Embed.Model(self.args).float()
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -51,7 +41,10 @@ class Exp_Main(Exp_Basic):
         return model_optim
 
     def _select_criterion(self):
-        criterion = nn.MSELoss()
+        if 'OT' in self.args.model:
+            criterion = emd_loss
+        else:
+            criterion = nn.MSELoss()
         return criterion
 
     def vali(self, vali_data, vali_loader, criterion):
@@ -68,25 +61,55 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                if self.args.use_time : 
-                    outputs = self.model(batch_x, batch_x_mark)
-                else : 
-                    outputs = self.model(batch_x)
-                
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        if 'Linear' in self.args.model:
+                            outputs = self.model(batch_x)
+                        elif 'OT' in self.args.model:
+                          z = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                          outputs = self.model(z, batch_x.squeeze(-1)).unsqueeze(-1)
 
+                        else:
+                            if self.args.output_attention:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            else:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'Linear' in self.args.model:
+                        outputs = self.model(batch_x)
+
+                    elif 'OT' in self.args.model:
+
+                        pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                        pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
+                        t = torch.rand(batch_x.shape[0], 1, device= self.device)
+                        xt = (1 - t) * pi0 + t * pi1
+                        target = pi1 - pi0
+
+                        outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
+
+                    else:
+                        if self.args.output_attention:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        else:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                if 'Linear' in self.args.model:
+                      target = batch_y[:, -self.args.pred_len:,0].to(self.device)
 
                 pred = outputs.detach().cpu()
-                true = batch_y.detach().cpu()
+                true = target.detach().cpu()
 
-                loss = criterion(pred, true)
+                loss = criterion(pred.squeeze(-1), true)
 
                 total_loss.append(loss)
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
+
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')
@@ -128,22 +151,58 @@ class Exp_Main(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                if self.args.use_time : 
-                    outputs = self.model(batch_x, batch_x_mark)
-                else : 
-                    outputs = self.model(batch_x)
-                # print(outputs.shape,batch_y.shape)
-                f_dim = -1 if self.args.features == 'MS' else 0
-                outputs = outputs[:, -self.args.pred_len:, f_dim:]
-                batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                loss = criterion(outputs, batch_y)
-                train_loss.append(loss.item())
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        if 'Linear' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            else:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                        f_dim = -1 if self.args.features == 'MS' else 0
+                        outputs = outputs[:, -self.args.pred_len:, f_dim:]
+                        batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
+                        loss = criterion(outputs, batch_y)
+                        train_loss.append(loss.item())
+                else:
+                    if 'Linear' in self.args.model:
+                            outputs = self.model(batch_x)
+
+
+                    elif 'OT' in self.args.model:
+
+                        pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                        pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
+                        t = torch.rand(batch_x.shape[0], 1, device= self.device)
+                        xt = (1 - t) * pi0 + t * pi1
+                        target = pi1 - pi0
+                        outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
+
+                    else:
+                        if self.args.output_attention:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+
+                        else:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    outputs = outputs[:, -self.args.pred_len:, f_dim:]
+
+                    if 'Linear' in self.args.model:
+                      target = batch_y[:, -self.args.pred_len:,0].to(self.device)
+                    if 'Linear' in self.args.model:
+                        loss = criterion(outputs.squeeze(-1), target)
+                    else:
+                        loss = criterion(outputs.squeeze(-1), target, self.args.eps)
+                    train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    # print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
-                    print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                    # print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
 
@@ -161,12 +220,9 @@ class Exp_Main(Exp_Basic):
                 vali_loss = self.vali(vali_data, vali_loader, criterion)
                 test_loss = self.vali(test_data, test_loader, criterion)
 
-                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
-                    epoch + 1, train_steps, train_loss, vali_loss, test_loss))
                 early_stopping(vali_loss, self.model, path)
             else:
-                print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f}".format(
-                    epoch + 1, train_steps, train_loss))
+
                 early_stopping(train_loss, self.model, path)
 
             if early_stopping.early_stop:
@@ -182,9 +238,9 @@ class Exp_Main(Exp_Basic):
 
     def test(self, setting, test=0):
         test_data, test_loader = self._get_data(flag='test')
-        
+
         if test:
-            print('loading model')
+            # print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
         preds = []
@@ -206,42 +262,60 @@ class Exp_Main(Exp_Basic):
                 # decoder input
                 dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                if self.args.use_time : 
-                    outputs = self.model(batch_x, batch_x_mark)
-                else : 
-                    outputs = self.model(batch_x)
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        if 'Linear' in self.args.model:
+                            outputs = self.model(batch_x)
+                        else:
+                            if self.args.output_attention:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            else:
+                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    if 'Linear' in self.args.model:
+                            outputs = self.model(batch_x)
 
+
+                    elif 'OT' in self.args.model:
+
+                        outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                        for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
+                          vt = self.model(outputs, t.unsqueeze(0).expand(batch_x.shape[0], 1), batch_x.squeeze(-1))
+                          outputs = outputs + vt * (1.0/50)
+
+                        outputs = outputs.unsqueeze(-1)
+
+
+                    else:
+                        if self.args.output_attention:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+
+                        else:
+                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
-                # print(outputs.shape,batch_y.shape)
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
 
-
                 pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
                 true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
 
-                # if i == 3:
-                #     print("================================================")
-                #     print("last sequence in input: \n", batch_x[:3,-1,:])
-                #     print("\n preds: \n", outputs[:3,:,:])
-                #     print("================================================")
 
                 preds.append(pred)
                 trues.append(true)
                 inputx.append(batch_x.detach().cpu().numpy())
                 if i % 20 == 0:
                     input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0) # Shape --> [seq_len+pred_len,] using the last feature from the first batch
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
                     visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
 
         if self.args.test_flop:
             test_params_flop((batch_x.shape[1],batch_x.shape[2]))
             exit()
-            
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
         inputx = np.concatenate(inputx, axis=0)
@@ -250,7 +324,8 @@ class Exp_Main(Exp_Basic):
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-
+        print("input preds", preds.shape)
+        print("input trues", trues.shape)
         mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
         f = open("result.txt", 'a')
@@ -260,23 +335,9 @@ class Exp_Main(Exp_Basic):
         f.write('\n')
         f.close()
 
-        f = open("mse_per_feat.text", 'a')
-        f.write(setting + "  \n")
-        per_feat = PerFeatMSE(preds, trues)
-        for i in range(per_feat.shape[1]):
-            f.write(f'{per_feat[1,i]}\n')
-
-        f.write('\n')
-        f.write('\n')
-        f.write('=====================================================')
-        f.write('\n')
-        f.close()
-
-        # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
         np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
-        # np.save(folder_path + 'x.npy', inputx)
-        return
+
+        return mse, mae, preds, trues, inputx
 
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
