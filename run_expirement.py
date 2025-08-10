@@ -133,6 +133,7 @@ def main():
                     predictions = []
                     print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
                     for i in range(args.num_trials):
+                        print(f"Trial {i+1} out of {args.num_trials}")
                         exp = Exp(args)  
                         exp.train(setting)
                         mse, mae, preds, trues, pasts = exp.test(setting)

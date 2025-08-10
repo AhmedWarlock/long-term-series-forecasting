@@ -110,6 +110,7 @@ def fc_metrics(predictions, groundtruths, setting, batch_size=10):
     mae, mse, _, _, _, _, _ = metric(mean_preds, groundtruths)
     crps, crps_std = safe_crps(predictions, groundtruths)
     print("=" * 40)
+    print("Final results")
     print(f"MSE: {mse:.5f}, MAE: {mae:.5f}, CRPS: {crps:.5f}, CRPS_STD: {crps_std:.5f}")
     f = open("result.txt", 'a')
     f.write(setting + "  \n")
