@@ -66,7 +66,7 @@ class Exp_Main(Exp_Basic):
                     with torch.cuda.amp.autocast():
                         if 'Linear' in self.args.model:
                             outputs = self.model(batch_x)
-                        elif 'OT' in self.args.model:
+                        elif 'FlowCast' in self.args.model:
                           z = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
                           outputs = self.model(z, batch_x.squeeze(-1)).unsqueeze(-1)
 
@@ -79,7 +79,7 @@ class Exp_Main(Exp_Basic):
                     if 'Linear' in self.args.model:
                         outputs = self.model(batch_x)
 
-                    elif 'OT' in self.args.model:
+                    elif 'FlowCast' in self.args.model:
 
                         pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
                         pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
@@ -172,7 +172,7 @@ class Exp_Main(Exp_Basic):
                             outputs = self.model(batch_x)
 
 
-                    elif 'OT' in self.args.model:
+                    elif 'FlowCast' in self.args.model:
 
                         pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
                         pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
@@ -192,10 +192,8 @@ class Exp_Main(Exp_Basic):
 
                     if 'Linear' in self.args.model:
                       target = batch_y[:, -self.args.pred_len:,0].to(self.device)
-                    if 'Linear' in self.args.model:
-                        loss = criterion(outputs.squeeze(-1), target)
-                    else:
-                        loss = criterion(outputs.squeeze(-1), target, self.args.eps)
+                   
+                    loss = criterion(outputs.squeeze(-1), target)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -277,7 +275,7 @@ class Exp_Main(Exp_Basic):
                             outputs = self.model(batch_x)
 
 
-                    elif 'OT' in self.args.model:
+                    elif 'FlowCast' in self.args.model:
 
                         outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
                         for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
@@ -324,8 +322,6 @@ class Exp_Main(Exp_Basic):
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-        print("input preds", preds.shape)
-        print("input trues", trues.shape)
         mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
         f = open("result.txt", 'a')
