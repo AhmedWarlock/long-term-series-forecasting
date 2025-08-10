@@ -1,6 +1,6 @@
 from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
-from models import DLinear, NLinear, FlowCast
+from models import DLinear, NLinear, FlowCast, MLP_baseline
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
 from utils.metrics import metric, emd_loss
 import numpy as np
@@ -25,6 +25,7 @@ class Exp_Main(Exp_Basic):
             'NLinear': NLinear,
             'FlowCast': FlowCast,
             'FlowCast-OT': FlowCast,
+            'MLP': MLP_baseline,
         }
         model = model_dict[self.args.model].Model(self.args).float()
 
@@ -58,54 +59,50 @@ class Exp_Main(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
+
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-                        elif 'OT' in self.args.model:
-                          z = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
-                          outputs = self.model(z, batch_x.squeeze(-1)).unsqueeze(-1)
+                        if 'FlowCast' in self.args.model:
+                            pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
+                            t = torch.rand(batch_x.shape[0], 1, device= self.device)
+                            xt = (1 - t) * pi0 + t * pi1
+                            target = pi1 - pi0
+                            outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
 
                         else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(batch_x)
                 else:
-                    if 'Linear' in self.args.model:
-                        outputs = self.model(batch_x)
-
-                    elif 'OT' in self.args.model:
-
+                    if 'FlowCast' in self.args.model:
                         pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
                         pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
                         t = torch.rand(batch_x.shape[0], 1, device= self.device)
                         xt = (1 - t) * pi0 + t * pi1
                         target = pi1 - pi0
-
                         outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
 
                     else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs = self.model(batch_x)
+                        
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
-                if 'Linear' in self.args.model:
+                if 'FlowCast' not in self.args.model:
                       target = batch_y[:, -self.args.pred_len:,0].to(self.device)
 
-                pred = outputs.detach().cpu()
-                true = target.detach().cpu()
+                if self.args.features == 'S':
+                    pred = outputs.detach().cpu()
+                    true = target.detach().cpu()
+                    loss = criterion(pred.squeeze(-1), true)
+                else : 
+                    target = batch_y[:, -self.args.pred_len:].to(self.device)
+                    pred = outputs.detach().cpu()
+                    true = target.detach().cpu()
+                    loss = criterion(outputs, target)
 
-                loss = criterion(pred.squeeze(-1), true)
 
-                total_loss.append(loss)
+
+                total_loss.append(loss.detach().cpu().item())
         total_loss = np.average(total_loss)
         self.model.train()
         return total_loss
@@ -147,20 +144,18 @@ class Exp_Main(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-
-                # encoder - decoder
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
+                        if 'FlowCast' in self.args.model:
+                            pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
+                            t = torch.rand(batch_x.shape[0], 1, device= self.device)
+                            xt = (1 - t) * pi0 + t * pi1
+                            target = pi1 - pi0
+                            outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
+
                         else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(batch_x)
 
                         f_dim = -1 if self.args.features == 'MS' else 0
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -168,34 +163,28 @@ class Exp_Main(Exp_Basic):
                         loss = criterion(outputs, batch_y)
                         train_loss.append(loss.item())
                 else:
-                    if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-
-
-                    elif 'OT' in self.args.model:
-
-                        pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
-                        pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
-                        t = torch.rand(batch_x.shape[0], 1, device= self.device)
-                        xt = (1 - t) * pi0 + t * pi1
-                        target = pi1 - pi0
-                        outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
+                    if 'FlowCast' in self.args.model:
+                            pi0 = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            pi1 = batch_y[:,-self.args.pred_len:].squeeze(-1).to(self.device)
+                            t = torch.rand(batch_x.shape[0], 1, device= self.device)
+                            xt = (1 - t) * pi0 + t * pi1
+                            target = pi1 - pi0
+                            outputs = self.model(xt,t, batch_x.squeeze(-1)).unsqueeze(-1)
 
                     else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
+                            outputs = self.model(batch_x)
+                            
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
 
-                    if 'Linear' in self.args.model:
+                    if 'FlowCast' not in self.args.model:
                       target = batch_y[:, -self.args.pred_len:,0].to(self.device)
-                    if 'Linear' in self.args.model:
-                        loss = criterion(outputs.squeeze(-1), target)
-                    else:
-                        loss = criterion(outputs.squeeze(-1), target, self.args.eps)
+                      
+                    if self.args.features == 'S':
+                      loss = criterion(outputs.squeeze(-1), target)
+                    else : 
+                        target = batch_y[:, -self.args.pred_len:].to(self.device)
+                        loss = criterion(outputs, target)
                     train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -259,40 +248,31 @@ class Exp_Main(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-                # encoder - decoder
+
                 if self.args.use_amp:
+                    
                     with torch.cuda.amp.autocast():
-                        if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
+                        if 'FlowCast' in self.args.model:
+                            outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
+                                vt = self.model(outputs, t.unsqueeze(0).expand(batch_x.shape[0], 1), batch_x.squeeze(-1))
+                                outputs = outputs + vt * (1.0/50)
+                            outputs = outputs.unsqueeze(-1)
+                                
                         else:
-                            if self.args.output_attention:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                            else:
-                                outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self.model(batch_x)
+                            
                 else:
-                    if 'Linear' in self.args.model:
-                            outputs = self.model(batch_x)
-
-
-                    elif 'OT' in self.args.model:
-
-                        outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
-                        for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
-                          vt = self.model(outputs, t.unsqueeze(0).expand(batch_x.shape[0], 1), batch_x.squeeze(-1))
-                          outputs = outputs + vt * (1.0/50)
-
-                        outputs = outputs.unsqueeze(-1)
-
-
+                    if 'FlowCast' in self.args.model:
+                            outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
+                                vt = self.model(outputs, t.unsqueeze(0).expand(batch_x.shape[0], 1), batch_x.squeeze(-1))
+                                outputs = outputs + vt * (1.0/50)
+                            outputs = outputs.unsqueeze(-1)
+                                
                     else:
-                        if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        outputs = self.model(batch_x)
 
-                        else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -324,8 +304,6 @@ class Exp_Main(Exp_Basic):
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
-        print("input preds", preds.shape)
-        print("input trues", trues.shape)
         mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
         print('mse:{}, mae:{}'.format(mse, mae))
         f = open("result.txt", 'a')
@@ -357,13 +335,14 @@ class Exp_Main(Exp_Basic):
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
-                # decoder input
-                dec_inp = torch.zeros([batch_y.shape[0], self.args.pred_len, batch_y.shape[2]]).float().to(batch_y.device)
-                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
-
-                if self.args.use_time : 
-                    outputs = self.model(batch_x, batch_x_mark)
-                else : 
+                if 'FlowCast' in self.args.model:
+                            outputs = (torch.randn(batch_x.shape[0], self.args.pred_len) * 0.01).to(self.device)
+                            for step, t in enumerate(torch.linspace(0, 1, 50, device=self.device)):
+                                vt = self.model(outputs, t.unsqueeze(0).expand(batch_x.shape[0], 1), batch_x.squeeze(-1))
+                                outputs = outputs + vt * (1.0/50)
+                                outputs = outputs.unsqueeze(-1)
+                                
+                else:
                     outputs = self.model(batch_x)
 
                 pred = outputs.detach().cpu().numpy()  # .squeeze()

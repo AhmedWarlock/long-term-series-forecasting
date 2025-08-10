@@ -4,14 +4,11 @@ import torch
 from exp.exp_main import Exp_Main
 import random
 import numpy as np
-
-fix_seed = 2021
-random.seed(fix_seed)
-torch.manual_seed(fix_seed)
-np.random.seed(fix_seed)
+from utils.metrics import fc_metrics
 
 def main():
-    parser = argparse.ArgumentParser(description='Autoformer & Transformer family for Time Series Forecasting')
+    parser = argparse.ArgumentParser(description='Model family for Time Series Forecasting')
+    parser.add_argument('--random_seed', type=int, default=2024, help='random seed')
 
     # basic config
     parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
@@ -21,9 +18,8 @@ def main():
                         help='model name, options: [MYLinear, Linear, NLinear, DLinear]')
 
     # data loader
-    parser.add_argument('--data', type=str, default='custom', help='dataset type')
-    parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
-    parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
+    parser.add_argument('--root_path', type=str, default='./dataset/', help='root path of the data file')
+    parser.add_argument('--data_path', type=str, default='weather.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -36,19 +32,23 @@ def main():
     parser.add_argument('--label_len', type=int, default=48, help='start token length')
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
 
-
+    
+    # FlowCast
+    parser.add_argument('--num_trials', type=int, default=100, help='Number of trails for ensemble training')
+   
     # DLinear
-    parser.add_argument('--individual', action='store_true', default=True, help='DLinear: a linear layer for each variate(channel) individually')
+    parser.add_argument('--individual', action='store_true', default=True, help='a linear layer for each variate(channel) individually')
     # Formers 
     parser.add_argument('--embed_type', type=int, default=0, help='0: default 1: value embedding + temporal embedding + positional embedding 2: value embedding + temporal embedding 3: value embedding + positional embedding 4: value embedding')
     parser.add_argument('--enc_in', type=int, default=7, help='encoder input size') # DLinear with --individual, use this hyperparameter as the number of channels
     parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
     parser.add_argument('--c_out', type=int, default=7, help='output size')
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
+    parser.add_argument('--hidden_dim', type=int, default=512, help='dimension of FlowCast hidden layers')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--num_lin_layers', type=int, default=2, help='num of linear layers')
+    parser.add_argument('--num_lin_layers', type=int, default=3, help='num of layers in the MLP')
     parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
@@ -61,15 +61,13 @@ def main():
     parser.add_argument('--activation', type=str, default='gelu', help='activation')
     parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
     parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
-    parser.add_argument('--use_time', type=int, default=0, help='use time features')
-    parser.add_argument('--use_dayofyear', type=int, default=1, help='use day of the year as a time feature')
 
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
-    parser.add_argument('--itr', type=int, default=2, help='experiments times')
-    parser.add_argument('--train_epochs', type=int, default=1, help='train epochs')
-    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+    parser.add_argument('--itr', type=int, default=1, help='experiments times')
+    parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch size of train input data')
     parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
@@ -85,6 +83,14 @@ def main():
     parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for usage')
 
     args = parser.parse_args()
+    
+    
+    # random seed
+    fix_seed = args.random_seed
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
+
 
     args.use_gpu = True if torch.backends.mps.is_available() and args.use_gpu else False
 
@@ -103,10 +109,9 @@ def main():
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
-            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+            setting = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
                 args.model_id,
                 args.model,
-                args.data,
                 args.features,
                 args.seq_len,
                 args.label_len,
@@ -120,25 +125,41 @@ def main():
                 args.embed,
                 args.distil,
                 args.des, ii)
+            if 'FlowCast' in args.model:
+                if  args.train_only:
+                    print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                    exp.train(setting)
+                else:
+                    predictions = []
+                    print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                    for i in range(args.num_trials):
+                        print(f"Trial {i+1} out of {args.num_trials}")
+                        exp = Exp(args)  
+                        exp.train(setting)
+                        mse, mae, preds, trues, pasts = exp.test(setting)
+                        predictions.append(np.squeeze(preds))
+                        
+                    predictions = np.array(predictions)
+                    groundtruths = np.squeeze(trues)  
+                    fc_metrics(predictions,groundtruths,setting)
+            else:
+                exp = Exp(args)  # set experiments
+                print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                exp.train(setting)
 
-            exp = Exp(args)  # set experiments
-            print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
-            exp.train(setting)
+                if not args.train_only:
+                    print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                    exp.test(setting)
 
-            if not args.train_only:
-                print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-                exp.test(setting)
-
-            if args.do_predict:
-                print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-                exp.predict(setting, True)
+                if args.do_predict:
+                    print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                    exp.predict(setting, True)
 
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
+        setting = '{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
                                                                                                     args.model,
-                                                                                                    args.data,
                                                                                                     args.features,
                                                                                                     args.seq_len,
                                                                                                     args.label_len,

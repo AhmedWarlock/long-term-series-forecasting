@@ -71,7 +71,7 @@ def compute_crps_from_samples(forecast_samples, ground_truth, axis=-1):
 
     crps = crps_ensemble(ground_truth, forecasts, axis=axis)
 
-    return np.mean(crps)
+    return np.mean(crps), np.std(crps)
 
 
 def get_mse_mae(preds, trues):
@@ -80,7 +80,7 @@ def get_mse_mae(preds, trues):
   return mse, mae
 
 
-def emd_loss(x, y, epsilon=7):
+def emd_loss(x, y):
 
     a = torch.tensor(ot.unif(x.shape[0]), dtype=torch.float32).to(x.device)
     b = torch.tensor(ot.unif(y.shape[0]), dtype=torch.float32).to(y.device)
@@ -91,3 +91,34 @@ def emd_loss(x, y, epsilon=7):
     cost = torch.sum(T * M)
 
     return cost
+
+
+def safe_crps(predictions, groundtruths, batch_size=10):
+    n = predictions.shape[0]
+    crps_vals = []
+    for i in range(0, n, batch_size):
+        batch_preds = predictions[i:i+batch_size]
+        crps, _ = compute_crps_from_samples(batch_preds, groundtruths)
+        crps_vals.append(crps)
+    return np.mean(crps_vals), np.std(crps_vals)
+
+def fc_metrics(predictions, groundtruths, setting, batch_size=10):
+    predictions = predictions.astype(np.float32)
+    groundtruths = groundtruths.astype(np.float32)
+    
+    mean_preds = np.mean(predictions, axis=0)
+    mae, mse, _, _, _, _, _ = metric(mean_preds, groundtruths)
+    crps, crps_std = safe_crps(predictions, groundtruths)
+    print("=" * 40)
+    print("Final results")
+    print(f"MSE: {mse:.5f}, MAE: {mae:.5f}, CRPS: {crps:.5f}, CRPS_STD: {crps_std:.5f}")
+    f = open("result.txt", 'a')
+    f.write(setting + "  \n")
+    f.write(f"MSE: {mse:.5f}, MAE: {mae:.5f}, CRPS: {crps:.5f}, CRPS_STD: {crps_std:.5f}")
+    f.write('\n')
+    f.write('\n')
+    f.close()
+    print("=" * 40)
+
+
+    
