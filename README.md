@@ -1,58 +1,90 @@
-# Long-Term Series Forecasting (LTSF) on Weather Dataset
+# FlowCast: Conditional Flow Matching for Probabilistic Time Series Forecasting
 
-This repository contains the implementation of various models for **long-term time series forecasting (LTSF)** using the Weather dataset. The project is focused on evaluating the effectiveness of linear and transformer-based models for forecasting meteorological indicators over extended periods.
+This repository contains the **PyTorch** implementation of the thesis:  
+**"FlowCast: Conditional Flow Matching for Probabilistic Time Series Forecasting"**  
 
----
+**African Institute of Mathematical Sciences (AIMS) Senegal**  
+**Author:** Ahmed Abdalla  
+**Supervisor:** Romain Menegaux  
 
-##  Weather Dataset
+## Features
+- **FlowCast**: A generative Conditional Flow Matching (CFM) model tailored for Long-Term Time Series Forecasting (LTSF).  
+- **FlowCast-OT**: Variant trained with a mini-batch Optimal Transport (OT) objective.  
+- **MLP Baseline**: A simple yet strong MLP-based forecaster with stacked linear layers for learning abstract temporal representations.  
+- **Efficiency**: Linear scaling w.r.t. context and prediction lengths by avoiding self-attention, recurrence, and convolution.   
+- **Reproducibility**: Ready-to-use training scripts and baselines for quick experimentation.
 
- Weather statistics recorded every 10 minutes for the entire year 2020.
-- **Features**: 
-    21 meteorological indicators,such as air temperature, wind speed, radiation, etc.
-- **Splits**: 
-    The dataset is split in a chronological order to maintain the time dependency of the series: **70% / 10% / 20%** (first 70% for training, next 10% for validation, and the final 20% for testing).
-
----
-
-## Task
-
-### Multivariate Forecasting
-- **Objective**: Use multiple weather indicators (features) as input to predict future values of all features simultaneously.
-
----
-
-##  Models Implemented
-
-### From ["Are Transformers Effective for Time Series Forecasting?"](https://arxiv.org/abs/2205.13504) (AAAI 2023)
-1. **Linear**: A simple linear layer for forecasting.
-2. **DLinear**: Decomposition Linear for handling trend and seasonality patterns.
-3. **NLinear**: Normalized Linear to mitigate train-test set distribution shifts.
-
-### From ["Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting "](https://arxiv.org/abs/2106.13008)(NeurIPS 2017) 
-4. **Autoformer**: Transformer-based model designed for time series decomposition with auto-correlation to capture periodic patterns efficiently.
-
-## Custom Implementation
-Linear models specifically designed for this experiment.
-### **TimeEmbed Model**
-
-#### Temporal Embedding
-- **Input**: `time_stamp` is a tensor of time-related indices (e.g., hour of day and day of year).
-- **Embedding**: Learned using `nn.Embedding`.
-- The embeddings are averaged **across time and features** and then concatenated to the input `x` along the **second dimension**.
-
-####  `LinearLayer` Module:
-1. **`self.layers`**:
-   - A list of **independent linear layers**, where each layer (`self.layers[i]`) processes **all features** in the input.
-   - Each `self.layers[i]` takes the **entire feature dimension** as input and **mixes information** across features to produce an **output corresponding to a specific feature**.
-
-2. **`self.proj_layers`**:
-   - A second set of **independent projection layers**.
-   - Each `self.proj_layers[i]` reduces the output of its corresponding `self.layers[i]` (feature-specific output) to a single value **along the last dimension**.
-   - This reduction effectively produces one value for the specific feature being processed.
-   - The reduced output (from `self.proj_layers[i]`) is placed into the corresponding slice of the output tensor.
+This code is built on the code base of [Autoformer](https://github.com/thuml/Autoformer) and [LSTF-Linear](https://github.com/cure-lab/LTSF-Linear).
 
 
+In addition to our models, we provide re-implementations of the **[NLinear and DLinear](https://arxiv.org/pdf/2205.13504.pdf)** (AAAI 2023) models for fair comparison.
 
-## Evaluation Metric
 
-- Mean Squared Error (MSE) and Mean Absolute Error (MAE) are used to evaluate model performance.
+## FlowCast
+
+### FlowCast Models
+FlowCast is a **lightweight generative Conditional Flow Matching (CFM)** model designed for the Long-term Time Series Forecasting (LTSF) task.
+
+- **FlowCast**: The basic model, trained with **(MSE)** loss.
+- **FlowCast-OT**: A variant of FlowCast trained with a **mini-batch Optimal Transport (OT)** objective to encourage smoother, simpler flows. Shares the same architecture as FlowCast.
+
+
+We also provide implementations of a competitive baselinee for comparison:
+
+- **MLP Baseline**: A simple yet effective multi-layer perceptron.  
+  To enhance the expressiveness of the basic linear formulation, multiple linear layers are stacked, allowing the model to learn more abstract temporal representations. Each layer performs independent temporal transformations on each input feature, effectively treating each variate separately.
+
+
+## Comparison with Baselines
+### Univariate Forecasting:
+
+![image](images/univariate_results.png)
+
+### Multivariate Forecasting:
+
+![image](images/multivariate_results.png)
+
+
+## Getting Started
+### Environment Setup
+First, ensure you have [Conda](https://docs.conda.io/en/latest/) installed.  
+Then create and activate a new environment:
+
+```bash
+conda create -n flowcast python=3.9
+conda activate flowcast
+pip install -r requirements.txt
+```
+
+
+### 📂 Data Preparation
+
+You can obtain all datasets from [Google Drive](https://drive.google.com/drive/folders/1ZOYpTUa82_jCcxIdTmyr0LXQfvaM9vIy).  
+All datasets are **preprocessed** and ready for use.
+
+Create a `dataset` directory and place the downloaded files inside:
+
+```bash
+mkdir dataset
+```
+### Training Example
+
+Implementations for **FlowCast**, **FlowCast-OT**, **MLP**, **DLinear**, and **NLinear** are provided under `scripts/`.
+
+**Train FlowCast on the Weather dataset:**
+```bash
+sh scripts/FlowCast/weather.sh
+```
+
+This command starts training and writes results to the `logs/` directory by default.
+To run a different model, edit the script to set the desired model name (FlowCast, FlowCast-OT, MLP, DLinear, NLinear).
+
+## Evaluation Metrics
+
+We evaluate models using:
+
+- **Mean Squared Error (MSE)**
+- **Mean Absolute Error (MAE)**
+- **Continuous Ranked Probability Score (CRPS)**
+
+
